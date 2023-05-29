@@ -1,0 +1,22 @@
+{% extends "main/base_min_nav.html" %}
+{% load crispy_forms_filters %}
+{% block content %}
+    <div class="content-section">
+        <form method="POST">
+            {% csrf_token %}
+            <fieldset class="form-group">
+                <legend class="border-bottom mb-4">Log In</legend>
+                {{ form|crispy }}
+            </fieldset>
+            <div class="form-group">
+                <button class="btn btn-outline-info" type="submit">Log In</button>
+            </div>
+            <input type="hidden" name="next" value="{{ next }}">
+        </form>
+        <div class="border-top pt-3">
+            <small class="text-muted">
+                <a href="{% url 'password_reset' %}">Forgot password?</a>
+            </small>
+        </div>
+    </div>
+{% endblock %}

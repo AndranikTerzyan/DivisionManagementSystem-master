@@ -1,0 +1,116 @@
+version: '3.7'
+
+services:
+  dms:
+    image: ghcr.io/mredwin1/dms:latest
+    build:
+      context: .
+      dockerfile: dms.Dockerfile
+    container_name: dms
+    restart: always
+    environment:
+      - SQL_HOST=${SQL_HOST}
+      - SQL_PORT=${SQL_PORT}
+      - SQL_USER=${SQL_USER}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - USE_S3=${USE_S3}
+    depends_on:
+      - db
+    labels:
+      # Explicitly tell Traefik to expose this container
+      - "traefik.enable=true"
+      # The domain the service will respond to
+      - "traefik.http.routers.dms.rule=Host(`${DOMAIN}`)"
+      # Allow request only from the predefined entry point named "web"
+      - "traefik.http.routers.dms.entrypoints=web"
+      # Tell it to listen to port 80 inside the Docker container
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # Traefik will use the traefik_default docker network
+      - "traefik.docker.network=traefik_default"
+
+    # Bind volumes to enable hot-reloads.
+    # e.g. when a file is changed in this folder, the change is
+    # also applied to the same file inside the docker container.
+    volumes:
+      - ./DivisionManagementSystem/:/DivisionManagementSystem/
+      - ./employees/:/employees/
+      - ./main/:/main/
+      - ./operations/:/operations/
+      - ./templates/:/templates/
+  db:
+    image: postgres:12.0-alpine
+    restart: always
+    container_name: postgres_dms
+    environment:
+      - POSTGRES_USER=${SQL_USER}
+      - POSTGRES_PASSWORD=${SQL_PASSWORD}
+      - POSTGRES_DB=${SQL_DATABASE}
+    volumes:
+      - postgres_db:/var/lib/postgresql/data/
+  redis:
+    image: redis
+    restart: always
+    container_name: redis_dms
+
+  traefik:
+    image: "traefik:v2.3"
+    container_name: "traefik"
+    command:
+      - "--log.level=${TRAEFIK_LOG}"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      # All docker containers must be _explicitely_ exposed with traefik.enable=true
+      - "--providers.docker.exposedbydefault=false"
+      # Traefik will listen to _incoming requests_ on port 80
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  celery:
+    image: ghcr.io/mredwin1/dms:latest
+    container_name: celery_dms
+    restart: always
+    entrypoint: celery -A DivisionManagementSystem worker -l INFO
+    depends_on:
+      - redis
+      - db
+      - dms
+    environment:
+      - SQL_HOST=${SQL_HOST}
+      - SQL_PORT=${SQL_PORT}
+      - SQL_USER=${SQL_USER}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG}
+  celery_beat:
+    image: ghcr.io/mredwin1/dms:latest
+    container_name: celery_beat_dms
+    restart: always
+    entrypoint: celery -A DivisionManagementSystem beat -l INFO
+    depends_on:
+      - redis
+      - db
+      - dms
+    environment:
+      - SQL_HOST=${SQL_HOST}
+      - SQL_PORT=${SQL_PORT}
+      - SQL_USER=${SQL_USER}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG}
+
+volumes:
+  postgres_db:
